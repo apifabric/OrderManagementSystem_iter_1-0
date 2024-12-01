@@ -1,0 +1,138 @@
+{
+    "models": [
+        {
+            "classname": "Customer",
+            "code": "class Customer(Base):\n    \"\"\"description: Table to store customer information.\"\"\"\n    __tablename__ = 'customers'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    name = Column(String, nullable=False)\n    email = Column(String, nullable=True)\n    credit_limit = Column(Decimal, nullable=False, default=1000.0)\n    balance = Column(Decimal, nullable=True, default=0.0)",
+            "sqlite_create": "CREATE TABLE customers (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    email TEXT,\n    credit_limit DECIMAL NOT NULL DEFAULT 1000.0,\n    balance DECIMAL DEFAULT 0.0\n);",
+            "description": "description: Table to store customer information.",
+            "name": "customers"
+        },
+        {
+            "classname": "Order",
+            "code": "class Order(Base):\n    \"\"\"description: Table to store order details, including notes.\"\"\"\n    __tablename__ = 'orders'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    customer_id = Column(Integer, ForeignKey('customers.id'))\n    order_date = Column(DateTime, nullable=False)\n    total_amount = Column(Decimal, nullable=True, default=0.0)\n    notes = Column(String, nullable=True)",
+            "sqlite_create": "CREATE TABLE orders (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    customer_id INTEGER,\n    order_date DATETIME NOT NULL,\n    total_amount DECIMAL DEFAULT 0.0,\n    notes TEXT,\n    FOREIGN KEY (customer_id) REFERENCES customers(id)\n);",
+            "description": "description: Table to store order details, including notes.",
+            "name": "orders"
+        },
+        {
+            "classname": "Product",
+            "code": "class Product(Base):\n    \"\"\"description: Table to store product details.\"\"\"\n    __tablename__ = 'products'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    name = Column(String, nullable=False)\n    price = Column(Decimal, nullable=False)",
+            "sqlite_create": "CREATE TABLE products (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    name TEXT NOT NULL,\n    price DECIMAL NOT NULL\n);",
+            "description": "description: Table to store product details.",
+            "name": "products"
+        },
+        {
+            "classname": "Item",
+            "code": "class Item(Base):\n    \"\"\"description: Table to store items within an order, linking products and orders.\"\"\"\n    __tablename__ = 'items'\n    \n    id = Column(Integer, primary_key=True, autoincrement=True)\n    order_id = Column(Integer, ForeignKey('orders.id'))\n    product_id = Column(Integer, ForeignKey('products.id'))\n    quantity = Column(Integer, nullable=False)\n    unit_price = Column(Decimal, nullable=True) # Derived from Product\n    amount = Column(Decimal, nullable=True, default=0.0) # Derived field: quantity * unit_price",
+            "sqlite_create": "CREATE TABLE items (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    order_id INTEGER,\n    product_id INTEGER,\n    quantity INTEGER NOT NULL,\n    unit_price DECIMAL,\n    amount DECIMAL DEFAULT 0.0,\n    FOREIGN KEY (order_id) REFERENCES orders(id),\n    FOREIGN KEY (product_id) REFERENCES products(id)\n);",
+            "description": "description: Table to store items within an order, linking products and orders.",
+            "name": "items"
+        }
+    ],
+    "rules": [
+        {
+            "name": "Calculate Customer Balance",
+            "description": "Derive customer's balance from sum of open order totals.",
+            "use_case": "Customer Balance Management",
+            "entity": "Customer",
+            "code": "Rule.sum(derive=Customer.balance, as_sum_of=Order.total_amount, where=lambda row: row.order_date is not None) "
+        },
+        {
+            "name": "Ensure Customer Does Not Exceed Credit Limit",
+            "description": "Ensure customer's balance does not exceed their credit limit.",
+            "use_case": "Customer Credit Limit Enforcement",
+            "entity": "Customer",
+            "code": "Rule.constraint(validate=Customer, as_condition=lambda row: row.balance <= row.credit_limit, error_msg=\"Customer balance ({row.balance}) exceeds credit limit ({row.credit_limit})\")"
+        },
+        {
+            "name": "Calculate Order Total Amount",
+            "description": "Derive order's total amount from the sum of item amounts.",
+            "use_case": "Order Amount Calculation",
+            "entity": "Order",
+            "code": "Rule.sum(derive=Order.total_amount, as_sum_of=Item.amount)"
+        },
+        {
+            "name": "Calculate Item Amount",
+            "description": "Derive item amount as quantity multiplied by unit price.",
+            "use_case": "Item Amount Calculation",
+            "entity": "Item",
+            "code": "Rule.formula(derive=Item.amount, as_expression=lambda row: row.quantity * row.unit_price)"
+        },
+        {
+            "name": "Copy Product Unit Price to Item",
+            "description": "Copy product's unit price to item when the product is selected.",
+            "use_case": "Item Unit Price Copy",
+            "entity": "Item",
+            "code": "Rule.copy(derive=Item.unit_price, from_parent=Product.price)"
+        }
+    ],
+    "test_data": "from datetime import datetime\n\ncustomer1 = Customer(name=\"Alice\", email=\"alice@example.com\", credit_limit=1500.0, balance=150.0)\ncustomer2 = Customer(name=\"Bob\", email=\"bob@example.com\", credit_limit=2000.0, balance=200.0)\ncustomer3 = Customer(name=\"Carol\", credit_limit=2200.0, balance=300.0)\ncustomer4 = Customer(name=\"Dave\", email=\"dave@example.com\", credit_limit=2500.0, balance=450.0)\n\norder1 = Order(customer_id=1, order_date=datetime(2023, 10, 5), total_amount=150.0, notes=\"First order\")\norder2 = Order(customer_id=2, order_date=datetime(2023, 10, 6), total_amount=200.0)\norder3 = Order(customer_id=3, order_date=datetime(2023, 10, 7), total_amount=300.0, notes=\"Urgent\")\norder4 = Order(customer_id=4, order_date=datetime(2023, 10, 8), total_amount=450.0)\n\nproduct1 = Product(name=\"Laptop\", price=1200.0)\nproduct2 = Product(name=\"Mouse\", price=25.0)\nproduct3 = Product(name=\"Keyboard\", price=50.0)\nproduct4 = Product(name=\"Monitor\", price=300.0)\n\nitem1 = Item(order_id=1, product_id=1, quantity=1, unit_price=1200.0, amount=1200.0)\nitem2 = Item(order_id=1, product_id=2, quantity=2, unit_price=25.0, amount=50.0)\nitem3 = Item(order_id=2, product_id=3, quantity=1, unit_price=50.0, amount=50.0)\nitem4 = Item(order_id=3, product_id=4, quantity=2, unit_price=300.0, amount=600.0)",
+    "test_data_rows": [
+        {
+            "test_data_row_variable": "customer1",
+            "code": "Customer(name=\"Alice\", email=\"alice@example.com\", credit_limit=1500.0, balance=150.0)"
+        },
+        {
+            "test_data_row_variable": "customer2",
+            "code": "Customer(name=\"Bob\", email=\"bob@example.com\", credit_limit=2000.0, balance=200.0)"
+        },
+        {
+            "test_data_row_variable": "customer3",
+            "code": "Customer(name=\"Carol\", credit_limit=2200.0, balance=300.0)"
+        },
+        {
+            "test_data_row_variable": "customer4",
+            "code": "Customer(name=\"Dave\", email=\"dave@example.com\", credit_limit=2500.0, balance=450.0)"
+        },
+        {
+            "test_data_row_variable": "order1",
+            "code": "Order(customer_id=1, order_date=datetime(2023, 10, 5), total_amount=150.0, notes=\"First order\")"
+        },
+        {
+            "test_data_row_variable": "order2",
+            "code": "Order(customer_id=2, order_date=datetime(2023, 10, 6), total_amount=200.0)"
+        },
+        {
+            "test_data_row_variable": "order3",
+            "code": "Order(customer_id=3, order_date=datetime(2023, 10, 7), total_amount=300.0, notes=\"Urgent\")"
+        },
+        {
+            "test_data_row_variable": "order4",
+            "code": "Order(customer_id=4, order_date=datetime(2023, 10, 8), total_amount=450.0)"
+        },
+        {
+            "test_data_row_variable": "product1",
+            "code": "Product(name=\"Laptop\", price=1200.0)"
+        },
+        {
+            "test_data_row_variable": "product2",
+            "code": "Product(name=\"Mouse\", price=25.0)"
+        },
+        {
+            "test_data_row_variable": "product3",
+            "code": "Product(name=\"Keyboard\", price=50.0)"
+        },
+        {
+            "test_data_row_variable": "product4",
+            "code": "Product(name=\"Monitor\", price=300.0)"
+        },
+        {
+            "test_data_row_variable": "item1",
+            "code": "Item(order_id=1, product_id=1, quantity=1, unit_price=1200.0, amount=1200.0)"
+        },
+        {
+            "test_data_row_variable": "item2",
+            "code": "Item(order_id=1, product_id=2, quantity=2, unit_price=25.0, amount=50.0)"
+        },
+        {
+            "test_data_row_variable": "item3",
+            "code": "Item(order_id=2, product_id=3, quantity=1, unit_price=50.0, amount=50.0)"
+        },
+        {
+            "test_data_row_variable": "item4",
+            "code": "Item(order_id=3, product_id=4, quantity=2, unit_price=300.0, amount=600.0)"
+        }
+    ],
+    "test_data_sqlite": "INSERT INTO customers (name, email, credit_limit, balance) VALUES (\"Alice\", \"alice@example.com\", 1500.0, 150.0);\nINSERT INTO customers (name, email, credit_limit, balance) VALUES (\"Bob\", \"bob@example.com\", 2000.0, 200.0);\nINSERT INTO customers (name, credit_limit, balance) VALUES (\"Carol\", 2200.0, 300.0);\nINSERT INTO customers (name, email, credit_limit, balance) VALUES (\"Dave\", \"dave@example.com\", 2500.0, 450.0);\n\nINSERT INTO orders (customer_id, order_date, total_amount, notes) VALUES (1, DateTime('2023-10-05'), 150.0, \"First order\");\nINSERT INTO orders (customer_id, order_date, total_amount) VALUES (2, DateTime('2023-10-06'), 200.0);\nINSERT INTO orders (customer_id, order_date, total_amount, notes) VALUES (3, DateTime('2023-10-07'), 300.0, \"Urgent\");\nINSERT INTO orders (customer_id, order_date, total_amount) VALUES (4, DateTime('2023-10-08'), 450.0);\n\nINSERT INTO products (name, price) VALUES (\"Laptop\", 1200.0);\nINSERT INTO products (name, price) VALUES (\"Mouse\", 25.0);\nINSERT INTO products (name, price) VALUES (\"Keyboard\", 50.0);\nINSERT INTO products (name, price) VALUES (\"Monitor\", 300.0);\n\nINSERT INTO items (order_id, product_id, quantity, unit_price, amount) VALUES (1, 1, 1, 1200.0, 1200.0);\nINSERT INTO items (order_id, product_id, quantity, unit_price, amount) VALUES (1, 2, 2, 25.0, 50.0);\nINSERT INTO items (order_id, product_id, quantity, unit_price, amount) VALUES (2, 3, 1, 50.0, 50.0);\nINSERT INTO items (order_id, product_id, quantity, unit_price, amount) VALUES (3, 4, 2, 300.0, 600.0);",
+    "name": "OrderManagementSystem"
+}
